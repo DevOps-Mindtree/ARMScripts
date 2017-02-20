@@ -1,0 +1,645 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": 
+	{
+		"devopsStorAccName": {
+			"type": "string",
+			"defaultValue" : "devopssan03",
+			"metadata": {
+				"description": "Name for storage account."
+			}
+		},
+		"slaveVMStorAccName": {
+			"type": "string",
+			"defaultValue" : "slavevmsan03",
+			"metadata": {
+				"description": "Name for storage account."
+			}
+		},
+		"devOpsServerUserName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of admin user for virtual machine. For example : devOpsUsrAdmin"
+			}
+		},
+		"slaveVMUserName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of admin user for virtual machine. For example : jenkinsSlaveUsrAdmin"
+			}
+		},
+		"devOpsServerUserPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Password of admin user for virtual machine login. For example : hello@123"
+			}
+		},
+		"slaveVMUserPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Password of admin user for virtual machine login. For example : hello@123"
+			}
+		},
+		"dnsNameForDevOpsServer": {
+			"type": "string",
+			"metadata": {
+				"description": "DNS name for virtual machine. For example : devopsserver03"
+			}
+		},
+		"dnsNameForSlaveVM": {
+			"type": "string",
+			"metadata": {
+				"description": "DNS name for virtual machine. For example : slavevmserver03"
+			}
+		},
+		"ubuntuOSVersion": {
+			"type": "string",
+			"defaultValue": "14.04.2-LTS",
+			"allowedValues": [
+				"12.04.5-LTS",
+				"14.04.2-LTS",
+				"15.04"
+			]      
+		},
+		"windowsOSVersion": {
+			"type": "string",
+			"defaultValue": "2012-R2-Datacenter",
+			"allowedValues": [
+				"2008-R2-SP1",
+				"2012-Datacenter",
+				"2012-R2-Datacenter"
+			]
+		},
+		"location" : {
+			"type" : "string",
+			"allowedValues" : [
+				"Southeast Asia",
+				"West US",
+				"East US",
+				"West Europe",
+				"East Asia"
+			],
+			"metadata": {
+				"description": "Region name for virtual machine deployment. For example : Southeast Asia"
+			}
+		},
+		"apiVersion": {
+            "type": "string",
+            "defaultValue": "2015-06-15"
+        },
+		"virtualNetworkName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual network. For example : devOpsVnet03"
+			}
+		},
+		"devOpsServerVMName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual machine. For example : devopsservervm03"
+			}
+		},
+		"slaveVMName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual machine. For example : jenkinsslave03"
+			}
+		}
+	},
+	"variables": {
+		"imagePublisher": "Canonical",
+		"imageOffer": "UbuntuServer",
+		"OSDNameDevOpsVM": "osdskdevopsvm03",
+		"OSDNameSlaveVM": "osdskslavevm03",
+		"nicNameDevOpsServerVM": "devopsServerVMNic03",
+		"nicNameSlaveVM": "slaveVMNic01",
+		"vNetAddressPrefix": "10.0.0.0/16",
+		"devOpsServerSubnetName": "devOpsServerSubnet03",
+		"devOpsServerSubnetPrefix": "10.0.2.0/24",
+		"storageAccountType": "Standard_LRS",
+		"devOpsServerPublicIPAddress": "devOpsserverPubIP03",
+		"jenkinsSlavePublicIPAddress": "slaveVMserverPubIP03",
+		"publicIPAddressType": "Dynamic",
+		"vmStorageAccountContainerName": "vhds",
+		"vmSize": "Basic_A2",
+		"vnetID": "[resourceId('Microsoft.Network/virtualNetworks',parameters('virtualNetworkName'))]",
+		"devOpsServerSubnetRef": "[concat(variables('vnetID'), '/subnets/', variables('devOpsServerSubnetName'))]",
+		"nsgForVnetName": "nsgDevOpsVNet",
+		"nsgNameDevOpsVM": "nsgDevOpsVM",
+		"nsgNameSlaveVM": "nsgDevOpsSlaveVM"
+	},
+	"resources": [
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgForVnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name": "Nginx_Rule",
+						"properties": {
+							"description": "Allow nginx",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "Jenkins_Rules",
+						"properties": 
+						{
+							"description": "Allow Jenkins",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "8080",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "Sonar_Qube_Rules",
+						"properties": 
+						{
+							"description": "Allow Sonar Qube",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "9000",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 103,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name" : "MySQL_Rules",
+						"properties": {
+							"description" : "Allow MySQL",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3306",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 104,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 105,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name" : "RDP_Rules",
+						"properties": {
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3389",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 106,
+							"direction": "Inbound"
+						}		
+					},
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 107,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgNameDevOpsVM')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name": "Nginx_Rule",
+						"properties": {
+							"description": "Allow nginx",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "Jenkins_Rules",
+						"properties": 
+						{
+							"description": "Allow Jenkins",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "8080",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "Sonar_Qube_Rules",
+						"properties": 
+						{
+							"description": "Allow Sonar Qube",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "9000",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 103,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name" : "MySQL_Rules",
+						"properties": {
+							"description" : "Allow MySQL",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3306",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 104,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 105,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 106,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgNameSlaveVM')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name" : "RDP_Rules",
+						"properties": {
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3389",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}		
+					},
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('devopsStorAccName')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"accountType": "[variables('storageAccountType')]"
+			}
+		},
+		{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('slaveVMStorAccName')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"accountType": "[variables('storageAccountType')]"
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/virtualNetworks",
+			"name": "[parameters('virtualNetworkName')]",
+			"location": "[parameters('location')]",
+			"dependsOn" : [
+				"[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgForVnetName'))]"
+			],
+			"properties": {
+				"addressSpace": {
+					"addressPrefixes": [
+						"[variables('vNetAddressPrefix')]"
+					]
+				},
+				"subnets": [
+					{
+						"name": "[variables('devOpsServerSubnetName')]",
+						"properties": {
+							"addressPrefix": "[variables('devOpsServerSubnetPrefix')]",
+							"networkSecurityGroup": {
+								"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgForVnetName'))]"
+							}
+						}
+					}
+				]
+			}
+		},
+		{ 
+			"apiVersion": "[parameters('apiVersion')]", 
+			"type": "Microsoft.Network/publicIPAddresses", 
+			"name": "[variables('devOpsServerPublicIPAddress')]", 
+			"location": "[parameters('location')]", 
+			"properties": { 
+				"publicIPAllocationMethod": "[variables('publicIPAddressType')]", 
+				"dnsSettings": { 
+					"domainNameLabel": "[parameters('dnsNameForDevOpsServer')]" 
+				} 
+			} 
+		},
+		{ 
+			"apiVersion": "[parameters('apiVersion')]", 
+			"type": "Microsoft.Network/publicIPAddresses", 
+			"name": "[variables('jenkinsSlavePublicIPAddress')]", 
+			"location": "[parameters('location')]", 
+			"properties": { 
+				"publicIPAllocationMethod": "[variables('publicIPAddressType')]", 
+				"dnsSettings": { 
+					"domainNameLabel": "[parameters('dnsNameForSlaveVM')]" 
+				} 
+			} 
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicNameDevOpsServerVM')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]",
+				"[concat('Microsoft.Network/publicIPAddresses/', variables('devOpsServerPublicIPAddress'))]"
+			],
+			"properties": {
+				"ipConfigurations": [
+					{
+						"name": "ipconfigDevOps",
+						"properties": {
+							"publiIPAllocationMethod": "Dynamic",
+							"publicIPAddress": { 
+								"id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('devOpsServerPublicIPAddress'))]" 
+							}, 
+							"privateIPAllocationMethod": "Dynamic",
+							"subnet": {
+								"id": "[variables('devOpsServerSubnetRef')]"
+							}
+						}
+					}
+				],
+				"networkSecurityGroup": {
+					"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgNameDevOpsVM'))]"
+				}
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicNameSlaveVM')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]",
+				"[concat('Microsoft.Network/publicIPAddresses/', variables('jenkinsSlavePublicIPAddress'))]"
+			],
+			"properties": {
+				"ipConfigurations": [
+					{
+						"name": "ipconfigslave",
+						"properties": {
+							"publiIPAllocationMethod": "Dynamic",
+							"publicIPAddress": { 
+								"id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('jenkinsSlavePublicIPAddress'))]" 
+							}, 
+							"privateIPAllocationMethod": "Dynamic",
+							"subnet": {
+								"id": "[variables('devOpsServerSubnetRef')]"
+							}
+						}
+					}
+				],
+				"networkSecurityGroup": {
+					"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgNameSlaveVM'))]"
+				}
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('devOpsServerVMName')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('devopsStorAccName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicNameDevOpsServerVM'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[variables('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('devOpsServerVMName')]",
+					"adminUsername": "[parameters('devOpsServerUserName')]",
+					"adminPassword": "[parameters('devOpsServerUserPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "[variables('imagePublisher')]",
+						"offer": "[variables('imageOffer')]",
+						"sku": "[parameters('ubuntuOSVersion')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+							"uri": "[concat('http://',parameters('devopsStorAccName'),'.blob.core.windows.net/',variables('vmStorageAccountContainerName'),'/',variables('OSDNameDevOpsVM'),'.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+						{
+							"id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicNameDevOpsServerVM'))]"
+						}
+					]
+				},
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('devopsStorAccName'),'.blob.core.windows.net')]"
+					}
+				}
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('slaveVMName')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('slaveVMStorAccName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicNameSlaveVM'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[variables('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('slaveVMName')]",
+					"adminUsername": "[parameters('slaveVMUserName')]",
+					"adminPassword": "[parameters('slaveVMUserPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "MicrosoftWindowsServer",
+						"offer": "WindowsServer",
+						"sku": "[parameters('windowsOSVersion')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+							"uri": "[concat('http://',parameters('slaveVMStorAccName'),'.blob.core.windows.net/',variables('vmStorageAccountContainerName'),'/',variables('OSDNameSlaveVM'),'.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+						{
+							"id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicNameSlaveVM'))]"
+						}
+					]
+				},
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('slaveVMStorAccName'),'.blob.core.windows.net')]"
+					}
+				}
+			}
+		},
+		{
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('devOpsServerVMName'),'/script')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', parameters('devOpsServerVMName'))]"
+			],
+			"properties": {
+				"publisher": "Microsoft.OSTCExtensions",
+				"type": "CustomScriptForLinux",
+				"typeHandlerVersion": "1.2",
+				"settings": {
+					"fileUris": [
+						"https://raw.githubusercontent.com/DevOps-Mindtree/Cloud-Bag-installations/master/install-nginx-jenkins-mysql-sonar.sh"
+					],
+					"commandToExecute": "sh install-nginx-jenkins-mysql-sonar.sh"
+				}
+			}
+		}
+	],
+	"outputs": {
+		"devOpsServerUserName" : {
+			"type" : "string",
+			"value": "[parameters('devOpsServerUserName')]"
+		},
+		"dnsNameForDevOpsServer" : {
+			"type" : "string",
+			"value": "[parameters('dnsNameForDevOpsServer')]"
+		},
+		"virtualNetworkName" : {
+			"type" : "string",
+			"value": "[parameters('virtualNetworkName')]"
+		},
+		"devOpsServerVMName" : {
+			"type" : "string",
+			"value": "[parameters('devOpsServerVMName')]"
+		},
+		"devOpsServerSubnetPrefix" : {
+			"type" : "string",
+			"value": "[variables('devOpsServerSubnetPrefix')]"
+		}
+	}
+}
