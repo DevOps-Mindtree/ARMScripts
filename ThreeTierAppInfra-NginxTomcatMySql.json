@@ -1,0 +1,909 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": 
+	{
+		"webServerStorAccName": {
+			"type": "string",
+			"defaultValue" : "webserversan00",
+			"metadata": {
+				"description": "Name for storage account."
+			}
+		},
+		"appServerStorAccName": {
+			"type": "string",
+			"defaultValue" : "appserversan00",
+			"metadata": {
+				"description": "Name for storage account."
+			}
+		},
+		"dataServerStorAccName": {
+			"type": "string",
+			"defaultValue" : "dataserversan00",
+			"metadata": {
+				"description": "Name for storage account."
+			}
+		},
+		"webServerUserName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of admin user for virtual machine. For example : webUsrAdmin"
+			}
+		},
+		"webServerUserPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Password of admin user for virtual machine login. For example : hello@123"
+			}
+		},
+		"appServerUserName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of admin user for virtual machine. For example : appUsrAdmin"
+			}
+		},
+		"appServerUserPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Password of admin user for virtual machine login. For example : hello@123"
+			}
+		},
+		"dbServerUserName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name of admin user for virtual machine. For example : dbUsrAdmin"
+			}
+		},
+		"dbServerUserPassword": {
+			"type": "securestring",
+			"metadata": {
+				"description": "Password of admin user for virtual machine login. For example : hello@123"
+			}
+		},
+		"dnsNameForWebServer": {
+			"type": "string",
+			"metadata": {
+				"description": "DNS name for virtual machine. For example : nginxwebserver"
+			}
+		},
+		"ubuntuOSVersion": {
+			"type": "string",
+			"defaultValue": "14.04.2-LTS",
+			"allowedValues": [
+				"12.04.5-LTS",
+				"14.04.2-LTS",
+				"15.04"
+			]      
+		},
+		"location" : {
+			"type" : "string",
+			"allowedValues" : [
+				"Southeast Asia",
+				"West US",
+				"East US",
+				"West Europe",
+				"East Asia"
+			],
+			"metadata": {
+				"description": "Region name for virtual machine deployment. For example : Southeast Asia"
+			}
+		},
+		"apiVersion": {
+            "type": "string",
+            "defaultValue": "2015-06-15"
+        },
+		"virtualNetworkName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual network. For example : appVnet"
+			}
+		},
+		"webServerVMName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual machine. For example : webserverVm"
+			}
+		},
+		"appServerVMName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual machine. For example : appserverVm"
+			}
+		},
+		"dbServerVMName": {
+			"type": "string",
+			"metadata": {
+				"description": "Name for virtual machine. For example : databaseserverVm"
+			}
+		}
+	},
+	"variables": {
+		"imagePublisher": "Canonical",
+		"imageOffer": "UbuntuServer",
+		"OSDiskNameWebVM": "osdskwebvm",
+		"OSDiskNameAppVM": "osdskappvm",
+		"OSDiskNameDBVM": "osdskdatavm",
+		"nicNameWebServerVM": "webServerVMNic",
+		"nicNameAppServerVM": "appServerVMNic",
+		"nicNameDBServerVM": "dataServerVMNic",
+		"vNetAddressPrefix": "10.0.0.0/16",
+		"webServerSubnetName": "webServerSubnet",
+		"appServerSubnetName": "appServerSubnet",
+		"dbServerSubnetName": "dataSeverSubnet",
+		"webServerSubnetPrefix": "10.0.2.0/24",
+		"appServerSubnetPrefix": "10.0.3.0/24",
+		"dbServerSubnetPrefix": "10.0.4.0/24",
+		"storageAccountType": "Standard_LRS",
+		"webServerPublicIPAddress": "webserverPubIP",
+		"publicIPAddressType": "Dynamic",
+		"vmStorageAccountContainerName": "vhds",
+		"vmSize": "Basic_A2",
+		"vnetID": "[resourceId('Microsoft.Network/virtualNetworks',parameters('virtualNetworkName'))]",
+		"webServerSubnetRef": "[concat(variables('vnetID'), '/subnets/', variables('webServerSubnetName'))]",
+		"appServerSubnetRef": "[concat(variables('vnetID'), '/subnets/', variables('appServerSubnetName'))]",
+		"dbServerSubnetRef": "[concat(variables('vnetID'), '/subnets/', variables('dbServerSubnetName'))]",
+		"nsgForVnetName": "nsgAppVNet",
+		"nsgWebServerSubnetName": "nsgWebServerSubnet",
+		"nsgAppServerSubnetName": "nsgAppServerSubnet",
+		"nsgDbServerSubnetName": "nsgDataSeverSubnet",
+		"nsgWebServerName": "nsgWebServerVM",
+		"nsgAppServerName": "nsgAppServerVM",
+		"nsgDBServerName": "nsgDataSeverVM"
+		
+	},
+	"resources": [
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgForVnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name": "Nginx_Rule",
+						"properties": {
+							"description": "Allow nginx",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},				
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 103,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name" : "Tomcat_Rules",
+						"properties": {
+							"description" : "Allow Tomcat",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "8080",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 105,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name" : "MySQL_Rules",
+						"properties": {
+							"description" : "Allow MySQL",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3306",
+							"sourceAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 104,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgWebServerSubnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name": "Nginx_Rule",
+						"properties": {
+							"description": "Allow nginx",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},				
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 103,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgAppServerSubnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name" : "Tomcat_Rules",
+						"properties": {
+							"description" : "Allow Tomcat",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "8080",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow local SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgDbServerSubnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name" : "MySQL_Rules",
+						"properties": {
+							"description" : "Allow MySQL",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3306",
+							"sourceAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow local SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgWebServerName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name": "Nginx_Rule",
+						"properties": {
+							"description": "Allow nginx",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "80",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},				
+					{
+						"name": "SSL_Rule",
+						"properties": {
+							"description": "Allow ssl",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "443",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "*",
+							"destinationAddressPrefix": "*",
+							"access": "Allow",
+							"priority": 103,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgAppServerName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name" : "Tomcat_Rules",
+						"properties": {
+							"description" : "Allow Tomcat",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "8080",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow local SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkSecurityGroups",
+			"name": "[variables('nsgDBServerName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"securityRules": [
+					{
+						"name" : "MySQL_Rules",
+						"properties": {
+							"description" : "Allow MySQL",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "3306",
+							"sourceAddressPrefix": "[variables('appServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 101,
+							"direction": "Inbound"
+						}
+					},
+					{
+						"name": "SSH_Rule",
+						"properties": {
+							"description": "Allow local SSH",
+							"protocol": "Tcp",
+							"sourcePortRange": "*",
+							"destinationPortRange": "22",
+							"sourceAddressPrefix": "[variables('webServerSubnetPrefix')]",
+							"destinationAddressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"access": "Allow",
+							"priority": 102,
+							"direction": "Inbound"
+						}
+					}
+				]
+			}
+		},
+		{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('webServerStorAccName')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"accountType": "[variables('storageAccountType')]"
+			}
+		},
+		{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('appServerStorAccName')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"accountType": "[variables('storageAccountType')]"
+			}
+		},
+		{
+			"type": "Microsoft.Storage/storageAccounts",
+			"name": "[parameters('dataServerStorAccName')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"accountType": "[variables('storageAccountType')]"
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/virtualNetworks",
+			"name": "[parameters('virtualNetworkName')]",
+			"location": "[parameters('location')]",
+			"dependsOn" : [
+				"[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgForVnetName'))]"
+			],
+			"properties": {
+				"addressSpace": {
+					"addressPrefixes": [
+						"[variables('vNetAddressPrefix')]"
+					]
+				},
+				"subnets": [
+					{
+						"name": "[variables('webServerSubnetName')]",
+						"properties": {
+							"addressPrefix": "[variables('webServerSubnetPrefix')]",
+							"networkSecurityGroup": {
+								"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgWebServerSubnetName'))]"
+							}
+						}
+					},
+					{
+						"name": "[variables('appServerSubnetName')]",
+						"properties": {
+							"addressPrefix": "[variables('appServerSubnetPrefix')]",
+							"networkSecurityGroup": {
+								"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgAppServerSubnetName'))]"
+							}
+						}
+					},
+					{
+						"name": "[variables('dbServerSubnetName')]",
+						"properties": {
+							"addressPrefix": "[variables('dbServerSubnetPrefix')]",
+							"networkSecurityGroup": {
+								"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgDbServerSubnetName'))]"
+							}
+						}
+					}					
+				]
+			}
+		},
+		{ 
+			"apiVersion": "[parameters('apiVersion')]", 
+			"type": "Microsoft.Network/publicIPAddresses", 
+			"name": "[variables('webServerPublicIPAddress')]", 
+			"location": "[parameters('location')]", 
+			"properties": { 
+				"publicIPAllocationMethod": "[variables('publicIPAddressType')]", 
+				"dnsSettings": { 
+					"domainNameLabel": "[parameters('dnsNameForWebServer')]" 
+				} 
+			} 
+		}, 
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicNameWebServerVM')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]",
+				"[concat('Microsoft.Network/publicIPAddresses/', variables('webServerPublicIPAddress'))]"
+			],
+			"properties": {
+				"ipConfigurations": [
+					{
+						"name": "ipconfig01",
+						"properties": {
+							"publiIPAllocationMethod": "Dynamic",
+							"publicIPAddress": { 
+								"id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('webServerPublicIPAddress'))]" 
+							}, 
+							"privateIPAllocationMethod": "Dynamic",
+							"subnet": {
+								"id": "[variables('webServerSubnetRef')]"
+							}
+						}
+					}
+				],
+				"networkSecurityGroup": {
+					"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgWebServerName'))]"
+				}
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicNameAppServerVM')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+			],
+			"properties": {
+				"ipConfigurations": [
+					{
+						"name": "ipconfig02",
+						"properties": {
+							"privateIPAllocationMethod": "Dynamic",
+							"subnet": {
+								"id": "[variables('appServerSubnetRef')]"
+							}
+						}
+					}
+				],
+				"networkSecurityGroup": {
+					"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgAppServerName'))]"
+				}
+			}
+		},
+		{
+			"apiVersion": "[parameters('apiVersion')]",
+			"type": "Microsoft.Network/networkInterfaces",
+			"name": "[variables('nicNameDBServerVM')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]"
+			],
+			"properties": {
+				"ipConfigurations": [
+					{
+						"name": "ipconfig03",
+						"properties": {
+							"privateIPAllocationMethod": "Dynamic",
+							"subnet": {
+								"id": "[variables('dbServerSubnetRef')]"
+							}
+						}
+					}
+				],
+				"networkSecurityGroup": {
+					"id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgDbServerSubnetName'))]"
+				}
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('webServerVMName')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('webServerStorAccName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicNameWebServerVM'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[variables('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('webServerVMName')]",
+					"adminUsername": "[parameters('webServerUserName')]",
+					"adminPassword": "[parameters('webServerUserPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "[variables('imagePublisher')]",
+						"offer": "[variables('imageOffer')]",
+						"sku": "[parameters('ubuntuOSVersion')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+							"uri": "[concat('http://',parameters('webServerStorAccName'),'.blob.core.windows.net/',variables('vmStorageAccountContainerName'),'/',variables('OSDiskNameWebVM'),'.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+						{
+							"id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicNameWebServerVM'))]"
+						}
+					]
+				},
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('webServerStorAccName'),'.blob.core.windows.net')]"
+					}
+				}
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('appServerVMName')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('appServerStorAccName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicNameAppServerVM'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[variables('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('appServerVMName')]",
+					"adminUsername": "[parameters('appServerUserName')]",
+					"adminPassword": "[parameters('appServerUserPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "[variables('imagePublisher')]",
+						"offer": "[variables('imageOffer')]",
+						"sku": "[parameters('ubuntuOSVersion')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+							"uri": "[concat('http://',parameters('appServerStorAccName'),'.blob.core.windows.net/',variables('vmStorageAccountContainerName'),'/',variables('OSDiskNameAppVM'),'.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+						{
+							"id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicNameAppServerVM'))]"
+						}
+					]
+				},
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('appServerStorAccName'),'.blob.core.windows.net')]"
+					}
+				}
+			}
+		},
+		{
+			"apiVersion": "2015-06-15",
+			"type": "Microsoft.Compute/virtualMachines",
+			"name": "[parameters('dbServerVMName')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Storage/storageAccounts/', parameters('dataServerStorAccName'))]",
+				"[concat('Microsoft.Network/networkInterfaces/', variables('nicNameDBServerVM'))]"
+			],
+			"properties": {
+				"hardwareProfile": {
+					"vmSize": "[variables('vmSize')]"
+				},
+				"osProfile": {
+					"computerName": "[parameters('dbServerVMName')]",
+					"adminUsername": "[parameters('dbServerUserName')]",
+					"adminPassword": "[parameters('dbServerUserPassword')]"
+				},
+				"storageProfile": {
+					"imageReference": {
+						"publisher": "[variables('imagePublisher')]",
+						"offer": "[variables('imageOffer')]",
+						"sku": "[parameters('ubuntuOSVersion')]",
+						"version": "latest"
+					},
+					"osDisk": {
+						"name": "osdisk",
+						"vhd": {
+							"uri": "[concat('http://',parameters('dataServerStorAccName'),'.blob.core.windows.net/',variables('vmStorageAccountContainerName'),'/',variables('OSDiskNameDBVM'),'.vhd')]"
+						},
+						"caching": "ReadWrite",
+						"createOption": "FromImage"
+					}
+				},
+				"networkProfile": {
+					"networkInterfaces": [
+						{
+							"id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicNameDBServerVM'))]"
+						}
+					]
+				},
+				"diagnosticsProfile": {
+					"bootDiagnostics": {
+						"enabled": "true",
+						"storageUri": "[concat('http://',parameters('dataServerStorAccName'),'.blob.core.windows.net')]"
+					}
+				}
+			}
+		},
+		{
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('webServerVMName'),'/script')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', parameters('webServerVMName'))]"
+			],
+			"properties": {
+				"publisher": "Microsoft.OSTCExtensions",
+				"type": "CustomScriptForLinux",
+				"typeHandlerVersion": "1.2",
+				"settings": {
+					"fileUris": [
+						"https://raw.githubusercontent.com/DevOps-Mindtree/Cloud-Bag-installations/master/install-nginx.sh"
+					],
+					"commandToExecute": "sh install-nginx.sh"
+				}
+			}
+		},
+		{
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('appServerVMName'),'/script')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', parameters('appServerVMName'))]"
+			],
+			"properties": {
+				"publisher": "Microsoft.OSTCExtensions",
+				"type": "CustomScriptForLinux",
+				"typeHandlerVersion": "1.2",
+				"settings": {
+					"fileUris": [
+						"https://raw.githubusercontent.com/DevOps-Mindtree/Cloud-Bag-installations/master/install-tomcat8.sh"
+					],
+					"commandToExecute": "sh install-tomcat8.sh"
+				}
+			}
+		},
+		{
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"name": "[concat(parameters('dbServerVMName'),'/script')]",
+			"apiVersion": "[parameters('apiVersion')]",
+			"location": "[parameters('location')]",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', parameters('dbServerVMName'))]"
+			],
+			"properties": {
+				"publisher": "Microsoft.OSTCExtensions",
+				"type": "CustomScriptForLinux",
+				"typeHandlerVersion": "1.2",
+				"settings": {
+					"fileUris": [
+						"https://raw.githubusercontent.com/DevOps-Mindtree/Cloud-Bag-installations/master/install-mysql.sh"
+					],
+					"commandToExecute": "sh install-mysql.sh"
+				}
+			}
+		}
+	],
+	"outputs": {
+		"webServerUserName" : {
+			"type" : "string",
+			"value": "[parameters('webServerUserName')]"
+		},
+		"appServerUserName" : {
+			"type" : "string",
+			"value": "[parameters('appServerUserName')]"
+		},
+		"dbServerUserName" : {
+			"type" : "string",
+			"value": "[parameters('dbServerUserName')]"
+		},
+		"dnsNameForWebServer" : {
+			"type" : "string",
+			"value": "[parameters('dnsNameForWebServer')]"
+		},
+		"virtualNetworkName" : {
+			"type" : "string",
+			"value": "[parameters('virtualNetworkName')]"
+		},
+		"webServerVMName" : {
+			"type" : "string",
+			"value": "[parameters('webServerVMName')]"
+		},
+		"appServerVMName" : {
+			"type" : "string",
+			"value": "[parameters('appServerVMName')]"
+		},
+		"dbServerVMName" : {
+			"type" : "string",
+			"value": "[parameters('dbServerVMName')]"
+		},
+		"webServerSubnetPrefix" : {
+			"type" : "string",
+			"value": "[variables('webServerSubnetPrefix')]"
+		},
+		"appServerSubnetPrefix" : {
+			"type" : "string",
+			"value": "[variables('appServerSubnetPrefix')]"
+		},
+		"dbServerSubnetPrefix" : {
+			"type" : "string",
+			"value": "[variables('dbServerSubnetPrefix')]"
+		}
+	}
+}
